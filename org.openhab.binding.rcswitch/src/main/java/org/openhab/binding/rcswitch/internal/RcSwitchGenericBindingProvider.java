@@ -8,11 +8,10 @@
  */
 package org.openhab.binding.rcswitch.internal;
 
-import java.util.HashMap;
+import java.util.BitSet;
 
 import org.apache.commons.lang.StringUtils;
 import org.openhab.binding.rcswitch.RcSwitchBindingProvider;
-import org.openhab.core.binding.BindingConfig;
 import org.openhab.core.items.Item;
 import org.openhab.core.library.items.SwitchItem;
 import org.openhab.model.item.binding.AbstractGenericBindingProvider;
@@ -20,6 +19,7 @@ import org.openhab.model.item.binding.BindingConfigParseException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import de.pi3g.pi.rcswitch.RCSwitch;
 
 /**
  * <p>
@@ -30,28 +30,28 @@ import org.slf4j.LoggerFactory;
  * The syntax of the binding configuration strings accepted is the following:
  * <p>
  * <code>
- * 	rcswitch="&lt;openHAB-command>:&lt;device-id>[,&lt;openHAB-command>:&lt;device-id>][,...]"
+ * 	rcswitch="&lt;group-address>:&lt;device-address>"
  * </code>
- * <p>
- * where parts in brackets [] signify an optional information.
- * </p>
  * 
  * <p>
  * Examples for valid binding configuration strings:
  * 
  * <ul>
- * <li><code>rcswitch="ON:Livingroom, OFF:Livingroom"</code></li>
+ * <li><code>rcswitch="10101:4"</code></li>
  * </ul>
  * 
  * @author Matthias Röckl
  * @since 1.0.0
  */
-public class RcSwitchGenericBindingProvider extends AbstractGenericBindingProvider implements RcSwitchBindingProvider {
+public class RcSwitchGenericBindingProvider extends
+		AbstractGenericBindingProvider implements RcSwitchBindingProvider {
 
-	static final Logger logger = LoggerFactory.getLogger(RcSwitchGenericBindingProvider.class);
+	static final Logger LOGGER = LoggerFactory
+			.getLogger(RcSwitchGenericBindingProvider.class);
 
 	/*
 	 * (non-Javadoc)
+	 * 
 	 * @see org.openhab.model.item.binding.BindingConfigReader#getBindingType()
 	 */
 	public String getBindingType() {
@@ -60,9 +60,13 @@ public class RcSwitchGenericBindingProvider extends AbstractGenericBindingProvid
 
 	/*
 	 * (non-Javadoc)
-	 * @see org.openhab.model.item.binding.BindingConfigReader#validateItemType(org.openhab.core.items.Item, java.lang.String)
+	 * 
+	 * @see
+	 * org.openhab.model.item.binding.BindingConfigReader#validateItemType(org
+	 * .openhab.core.items.Item, java.lang.String)
 	 */
-	public void validateItemType(Item item, String bindingConfig) throws BindingConfigParseException {
+	public void validateItemType(Item item, String bindingConfig)
+			throws BindingConfigParseException {
 		if (!(item instanceof SwitchItem)) {
 			throw new BindingConfigParseException(
 					"item '"
@@ -75,59 +79,53 @@ public class RcSwitchGenericBindingProvider extends AbstractGenericBindingProvid
 
 	/*
 	 * (non-Javadoc)
-	 * @see org.openhab.model.item.binding.AbstractGenericBindingProvider#processBindingConfiguration(java.lang.String, org.openhab.core.items.Item, java.lang.String)
+	 * 
+	 * @see org.openhab.model.item.binding.AbstractGenericBindingProvider#
+	 * processBindingConfiguration(java.lang.String,
+	 * org.openhab.core.items.Item, java.lang.String)
 	 */
 	@Override
-	public void processBindingConfiguration(String context, Item item, String bindingConfig) throws BindingConfigParseException {
+	public void processBindingConfiguration(String context, Item item,
+			String bindingConfig) throws BindingConfigParseException {
 		super.processBindingConfiguration(context, item, bindingConfig);
 
-		RcSwitchBindingConfig config = new RcSwitchBindingConfig();
-		this.parseBindingConfig(bindingConfig, config);
-		this.addBindingConfig(item, config);
-	}
-
-	/**
-	 * Parses the given bindingConfigs 
-	 * @param bindingConfigs
-	 * @param config
-	 * @throws BindingConfigParseException
-	 */
-	protected void parseBindingConfig(String bindingConfigs, RcSwitchBindingConfig config) throws BindingConfigParseException {
-
-		String bindingConfig = StringUtils.substringBefore(bindingConfigs, ",");
-		String bindingConfigTail = StringUtils.substringAfter(bindingConfigs, ",");
-
-		String[] configParts = bindingConfig.trim().split(":");
-
-		if (configParts.length != 2) {
-			throw new BindingConfigParseException("RC Switch binding must contain two parts separated by ':'");
+		if (item instanceof SwitchItem) {
+			// Group address
+			String groupAddressString = StringUtils.substringBefore(
+					bindingConfig, ":");
+			// Device address
+			String deviceAddressString = StringUtils.substringAfter(
+					bindingConfig, ":");
+			if (deviceAddressString == null || deviceAddressString.isEmpty()
+					|| groupAddressString == null
+					|| groupAddressString.isEmpty()) {
+				LOGGER.error("The item configuration '"
+						+ bindingConfig
+						+ "' is invalid. Valid format is <group-address>:<device-address>.");
+				return;
+			}
+			// Store the configuration
+			try {
+				BitSet groupAddress = RCSwitch
+						.getSwitchGroupAddress(groupAddressString);
+				int deviceAddress = Integer.parseInt(deviceAddressString);
+				RcSwitchBindingConfig config = new RcSwitchBindingConfig(
+						groupAddress, deviceAddress);
+				this.addBindingConfig(item, config);
+			} catch (IndexOutOfBoundsException e) {
+				LOGGER.error("The group address '"
+						+ groupAddressString
+						+ "' is invalid. The group address must have 5 bits, e.g. 10101.");
+			} catch (NumberFormatException e) {
+				LOGGER.error("The device address '"
+						+ deviceAddressString
+						+ "' is invalid. The device address must be an Integer value, e.g. 4.");
+			}
 		}
-
-		String command = StringUtils.trim(configParts[0]);
-		String switchId = StringUtils.trim(configParts[1]);
-
-		// if there are more commands to parse do that recursively ...
-		if (StringUtils.isNotBlank(bindingConfigTail)) {
-			parseBindingConfig(bindingConfigTail, config);
-		}
-
-		config.put(command, switchId);
 	}
 
-	public String getRcSwitchCommand(String itemName, String command) {
-		RcSwitchBindingConfig config = (RcSwitchBindingConfig) bindingConfigs.get(itemName);
-		return config != null ? config.get(command) : null;
-	}
-
-	/**
-	 * This is an internal data structure to store information from the binding
-	 * config strings and use it to answer the requests to the RC Switch
-	 * binding provider.
-	 */
-	static class RcSwitchBindingConfig extends HashMap<String, String> implements BindingConfig {
-
-		/** generated serialVersion UID */
-		private static final long serialVersionUID = 861870438027351568L;
+	public RcSwitchBindingConfig getItemConfig(String itemName) {
+		return (RcSwitchBindingConfig) bindingConfigs.get(itemName);
 	}
 
 }

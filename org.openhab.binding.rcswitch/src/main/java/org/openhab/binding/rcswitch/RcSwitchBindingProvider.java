@@ -8,6 +8,7 @@
  */
 package org.openhab.binding.rcswitch;
 
+import org.openhab.binding.rcswitch.internal.RcSwitchBindingConfig;
 import org.openhab.core.binding.BindingProvider;
 
 /**
@@ -20,16 +21,9 @@ import org.openhab.core.binding.BindingProvider;
 public interface RcSwitchBindingProvider extends BindingProvider {
 
 	/**
-	 * Returns the command to the given <code>itemName</code>.
-	 * 
-	 * @param itemName
-	 *            the item for which to find a command.
-	 * @param command
-	 *            the openHAB command for which to find a RC switch command
-	 * 
-	 * @return the corresponding command or <code>null</code> if no matching
-	 *         device id could be found.
+	 * Returns the configuration for the item with the given name
+	 * @param itemName  the name of the item
+	 * @return  the configuration of the item
 	 */
-	public String getRcSwitchCommand(String itemName, String command);
-
+	RcSwitchBindingConfig getItemConfig(String itemName);
 }

@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
  */
 public final class RcSwitchActivator implements BundleActivator {
 
-	private static Logger logger = LoggerFactory.getLogger(RcSwitchActivator.class);
+	private final static Logger LOGGER = LoggerFactory.getLogger(RcSwitchActivator.class);
 
 	private static BundleContext context;
 
@@ -30,7 +30,7 @@ public final class RcSwitchActivator implements BundleActivator {
 	 */
 	public void start(BundleContext bc) throws Exception {
 		context = bc;
-		logger.debug("RC Switch binding has been started.");
+		LOGGER.debug("RC Switch binding has been started.");
 	}
 
 	/**
@@ -38,7 +38,7 @@ public final class RcSwitchActivator implements BundleActivator {
 	 */
 	public void stop(BundleContext bc) throws Exception {
 		context = null;
-		logger.debug("RC Switch binding has been stopped.");
+		LOGGER.debug("RC Switch binding has been stopped.");
 	}
 
 	/**

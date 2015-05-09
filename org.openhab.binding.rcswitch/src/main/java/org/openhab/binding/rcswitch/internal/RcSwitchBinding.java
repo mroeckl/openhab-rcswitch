@@ -11,13 +11,10 @@ package org.openhab.binding.rcswitch.internal;
 import java.util.Dictionary;
 import java.util.EnumSet;
 import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.openhab.binding.rcswitch.RcSwitchBindingProvider;
 import org.openhab.core.binding.AbstractBinding;
+import org.openhab.core.library.types.OnOffType;
 import org.openhab.core.types.Command;
 import org.osgi.service.cm.ConfigurationException;
 import org.osgi.service.cm.ManagedService;
@@ -29,24 +26,27 @@ import com.pi4j.io.gpio.PinPullResistance;
 import com.pi4j.io.gpio.RaspiGpioProvider;
 import com.pi4j.io.gpio.impl.PinImpl;
 
+import de.pi3g.pi.rcswitch.RCSwitch;
+
 /**
  * <p>
- * Binding listening OpenHAB bus and send commands to RC switches when command is received.
+ * Binding listening OpenHAB bus and send commands to RC switches when command
+ * is received.
  * 
  * @author Matthias Röckl
  * @since 1.0.0
  */
-public class RcSwitchBinding extends AbstractBinding<RcSwitchBindingProvider> implements ManagedService {
+public class RcSwitchBinding extends AbstractBinding<RcSwitchBindingProvider>
+		implements ManagedService {
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(RcSwitchBinding.class);
+	private static final Logger LOGGER = LoggerFactory
+			.getLogger(RcSwitchBinding.class);
 
-	private static final Pattern CONFIG_PATTERN = Pattern.compile("^(.*?)\\.(gpioPin|groupAddress|deviceAddress)$");
-	
-	protected Map<String, DeviceConfig> deviceConfigCache = new HashMap<String, DeviceConfig>();
-	
+	private RCSwitch transmitter;
 
 	/*
 	 * (non-Javadoc)
+	 * 
 	 * @see org.openhab.core.binding.AbstractBinding#activate()
 	 */
 	@Override
@@ -56,6 +56,7 @@ public class RcSwitchBinding extends AbstractBinding<RcSwitchBindingProvider> im
 
 	/*
 	 * (non-Javadoc)
+	 * 
 	 * @see org.openhab.core.binding.AbstractBinding#deactivate()
 	 */
 	@Override
@@ -65,124 +66,94 @@ public class RcSwitchBinding extends AbstractBinding<RcSwitchBindingProvider> im
 
 	/*
 	 * (non-Javadoc)
-	 * @see org.openhab.core.binding.AbstractBinding#internalReceiveCommand(java.lang.String, org.openhab.core.types.Command)
+	 * 
+	 * @see
+	 * org.openhab.core.binding.AbstractBinding#internalReceiveCommand(java.
+	 * lang.String, org.openhab.core.types.Command)
 	 */
 	@Override
 	protected void internalReceiveCommand(String itemName, Command command) {
 		// Command has been received
-		
 		if (itemName != null) {
-			RcSwitchBindingProvider provider = this.findFirstMatchingBindingProvider(itemName, command.toString());
 
-			if (provider == null) {
-				LOGGER.warn("Doesn't find matching binding provider [itemName={}, command={}]", itemName, command);
+			// Get the configuration
+			RcSwitchBindingConfig config = this.getConfigForItemName(itemName);
+
+			if (config == null) {
+				LOGGER.error("No configuration for RcSwitch available.");
 				return;
 			}
-			LOGGER.debug(
-					"Received command (item='{}', state='{}', class='{}')",
-					new Object[] { itemName, command.toString(), command.getClass().toString() });
 
-			String commandString = provider.getRcSwitchCommand(itemName, command.toString());
-
-			String[] commandParts = commandString.split(":");
-			String deviceId = commandParts[0];
-
-			LOGGER.debug("Get connection details for device id '{}'", deviceId);
-			
-			DeviceConfig tvConfig = deviceConfigCache.get(deviceId);
-
-			if (tvConfig != null) {
-				RcSwitchConnection remoteController = tvConfig.getConnection();
-
-				if (remoteController != null) {
-					remoteController.send(command.toString());
+			// Only OnOffType is supported
+			if (command instanceof OnOffType) {
+				if (this.transmitter != null) {
+					if (OnOffType.ON.equals(command)) {
+						this.transmitter.switchOn(config.getGroupAddress(),
+								config.getDeviceAddress());
+					} else {
+						this.transmitter.switchOff(config.getGroupAddress(),
+								config.getDeviceAddress());
+					}
+				} else {
+					LOGGER.error("Transmitter has not been initialized. Please configure it correctly in your OpenHAB configuration.");
 				}
-				
 			} else {
-				LOGGER.warn("Cannot find connection details for device id '{}'", deviceId);
+				LOGGER.error("Only On/Off commands are supported.");
 			}
 		}
 	}
 
 	/**
-	 * Find the first matching {@link RcSwitchBindingProvider} according to <code>itemName</code>.
+	 * Returns the configuration for the item with the given name.
 	 * 
 	 * @param itemName
-	 * 
-	 * @return the matching binding provider or <code>null</code> if no binding
-	 *         provider could be found
+	 *            the name of the item
+	 * @return the configuration to use
 	 */
-	private RcSwitchBindingProvider findFirstMatchingBindingProvider(String itemName, String command) {
-		
-		RcSwitchBindingProvider firstMatchingProvider = null;
-
+	protected RcSwitchBindingConfig getConfigForItemName(String itemName) {
 		for (RcSwitchBindingProvider provider : this.providers) {
-
-			String commandString = provider.getRcSwitchCommand(itemName, command.toString());
-
-			if (commandString != null) {
-				firstMatchingProvider = provider;
-				break;
+			if (provider.getItemConfig(itemName) != null) {
+				return provider.getItemConfig(itemName);
 			}
 		}
-
-		return firstMatchingProvider;
+		return null;
 	}
 
 	/*
 	 * (non-Javadoc)
+	 * 
 	 * @see org.osgi.service.cm.ManagedService#updated(java.util.Dictionary)
 	 */
-	public void updated(Dictionary<String, ?> config) throws ConfigurationException {
+	public void updated(Dictionary<String, ?> config)
+			throws ConfigurationException {
 		LOGGER.debug("New configuration received");
 		if (config != null) {
 			Enumeration<String> keys = config.keys();
 			while (keys.hasMoreElements()) {
 				String key = (String) keys.nextElement();
 
-				// the config-key enumeration contains additional keys that we
-				// don't want to process here ...
 				if ("service.pid".equals(key)) {
 					continue;
 				}
 
-				Matcher matcher = CONFIG_PATTERN.matcher(key);
+				Object o = config.get("gpioPin");
+				if (o instanceof String) {
+					String pinAddressString = (String) o;
 
-				if (!matcher.matches()) {
-					LOGGER.debug("given config key '"
-							+ key
-							+ "' does not follow the expected pattern '<id>.<host|port>'");
-					continue;
-				}
-
-				matcher.reset();
-				matcher.find();
-
-				String deviceId = matcher.group(1);
-
-				DeviceConfig deviceConfig = deviceConfigCache.get(deviceId);
-
-				if (deviceConfig == null) {
-					deviceConfig = new DeviceConfig(deviceId);
-					deviceConfigCache.put(deviceId, deviceConfig);
-				}
-
-				String configKey = matcher.group(2);
-				String value = (String) config.get(key);
-
-				if ("gpioPin".equals(configKey)) {
-					int pinAddress = Integer.parseInt(value);
-					deviceConfig.gpioPin = new PinImpl(RaspiGpioProvider.NAME, pinAddress, "GPIO_" + pinAddress, 
-							EnumSet.of(PinMode.DIGITAL_INPUT, PinMode.DIGITAL_OUTPUT),
-							PinPullResistance.all());
-				} else if ("groupAddress".equals(configKey)) {
-					deviceConfig.groupAddress = value;
-				} else if ("deviceAddress".equals(configKey)) {
-					deviceConfig.deviceAddress = Integer.parseInt(value);
-				} else {
-					throw new ConfigurationException(configKey, "the given configKey '" + configKey + "' is unknown");
+					try {
+						int pinAddress = Integer.parseInt(pinAddressString);
+						PinImpl gpioPin = new PinImpl(RaspiGpioProvider.NAME,
+								pinAddress, "GPIO_" + pinAddress, EnumSet.of(
+										PinMode.DIGITAL_INPUT,
+										PinMode.DIGITAL_OUTPUT),
+								PinPullResistance.all());
+						this.transmitter = new RCSwitch(gpioPin);
+					} catch (NumberFormatException e) {
+						LOGGER.error("Invalid configuration. Please provide an Integer value in the 'gpioPin' configuration");
+					}
 				}
 			}
 		}
 	}
+
 }

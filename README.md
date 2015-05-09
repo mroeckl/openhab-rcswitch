@@ -3,18 +3,13 @@ Binding to control RC switches in OpenHAB
 
 ## Configuration
 ```
-rcswitch:SleepingRoom.gpioPin=0
-rcswitch:SleepingRoom.groupAddress=11111
-rcswitch:SleepingRoom.deviceAddress=1
-rcswitch:LivingRoom.gpioPin=0
-rcswitch:LivingRoom.groupAddress=11111
-rcswitch:LivingRoom.deviceAddress=4
+rcswitch:gpioPin=0
 ```
 
 ## Items
 ```
-Switch	SleepingRoom	{rcswitch="ON:SleepingRoom, OFF:SleepingRoom"}
-Switch	LivingRoom		{rcswitch="ON:LivingRoom, OFF:LivingRoom"}
+Switch	SleepingRoom	{rcswitch="11111:4"}
+Switch	LivingRoom		{rcswitch="11111:1"}
 ```
 
 ## Sitemap
